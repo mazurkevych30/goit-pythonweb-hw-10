@@ -3,7 +3,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database.db import get_db
-from src.routes import contacts
+from src.routes.v1 import contacts
 
 app = FastAPI()
 

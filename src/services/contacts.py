@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.repository.contacts import ContactsRepository
+from src.repositories.contacts_repository import ContactsRepository
 
 from src.schemas.contacts import BaseContact, UpdateContact
 
