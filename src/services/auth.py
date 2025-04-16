@@ -51,3 +51,104 @@ class AuthService:
                 detail="Incorrect username or password",
             )
         return user
+
+    async def register_user(self, user_data: UserCreate) -> User:
+        if await self.user_repository.get_by_username(user_data.username):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail="User already exists"
+            )
+        hashed_password = self._hash_password(user_data.password)
+        user = await self.user_repository.create_user(user_data, hashed_password)
+        return user
+
+    async def create_access_token(self, username: str) -> str:
+        expires_delts = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expires = datetime.now(timezone.utc) + expires_delts
+
+        to_encode = {"sub": username, "exp": expires}
+        encoded_jwt = jwt.encode(
+            to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
+        )
+        return encoded_jwt
+
+    async def create_refresh_token(
+        self, user_id: int, ip_address: str | None, user_agent: str | None
+    ) -> str:
+        token = secrets.token_urlsafe(32)
+        token_hash = self._hash_token(token)
+        expired_at = datetime.now(timezone.utc) + timedelta(
+            days=settings.REFRESH_TOKEN_EXPIRE_DAYS
+        )
+        await self.refresh_token_repository.save_token(
+            user_id, token_hash, expired_at, ip_address, user_agent
+        )
+        return token
+
+    async def get_current_user(self, token: str = Depends(oauth2_scheme)) -> User:
+        if await redis_client.exists(f"bl:{token}"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+            )
+
+        payload = self.decode_and_validate_access_token(token)
+        username = payload.get("sub")
+        if username is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+            )
+        user = await self.user_repository.get_by_username(username)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Could not validate credentials",
+            )
+        return user
+
+    def decode_and_validate_access_token(self, token: str) -> dict:
+        try:
+            payload = jwt.decode(
+                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+            )
+            return payload
+        except jwt.PyJWTError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Token wrong"
+            )
+
+    async def validate_refresh_token(self, token: str) -> User:
+        token_hash = self._hash_token(token)
+        current_time = datetime.now(timezone.utc)
+        refresh_token = await self.refresh_token_repository.get_active_token(
+            token_hash=token_hash, current_time=current_time
+        )
+        if refresh_token is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+            )
+        user = await self.user_repository.get_by_id(refresh_token.user_id)
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token"
+            )
+
+        return user
+
+    async def revoke_refresh_token(self, token: str) -> None:
+        token_hash = self._hash_token(token)
+        refresh_token = await self.refresh_token_repository.get_by_token_hash(
+            token_hash
+        )
+        if refresh_token and not refresh_token.revoked_at:
+            await self.refresh_token_repository.revoke_token(refresh_token)
+        return None
+
+    async def revoke_access_token(self, token: str) -> None:
+        payload = self.decode_and_validate_access_token(token)
+        exp = payload.get("exp")
+        if exp:
+            await redis_client.setex(
+                f"bl:{token}", exp - datetime.now(timezone.utc).timestamp(), "1"
+            )
+        return None
