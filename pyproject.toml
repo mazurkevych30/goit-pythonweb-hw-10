@@ -6,7 +6,7 @@ authors = [
     {name = "mazurkevych30",email = "132198562+mazurkevych30@users.noreply.github.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4.0"
 dependencies = [
     "sqlalchemy (>=2.0.40,<3.0.0)",
     "alembic (>=1.15.2,<2.0.0)",
@@ -15,7 +15,9 @@ dependencies = [
     "pydantic-settings (>=2.8.1,<3.0.0)",
     "redis (>=5.2.1,<6.0.0)",
     "pyjwt (>=2.10.1,<3.0.0)",
-    "passlib[bcrypt] (>=1.7.4,<2.0.0)"
+    "passlib[bcrypt] (>=1.7.4,<2.0.0)",
+    "apscheduler (>=3.11.0,<4.0.0)",
+    "slowapi (>=0.1.9,<0.2.0)"
 ]
 
 

@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException, status
 from passlib.context import CryptContext
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
+from redis.exceptions import ConnectionError
 
 from src.conf.config import settings
 from src.entity.models import User
@@ -61,7 +62,7 @@ class AuthService:
         user = await self.user_repository.create_user(user_data, hashed_password)
         return user
 
-    async def create_access_token(self, username: str) -> str:
+    def create_access_token(self, username: str) -> str:
         expires_delts = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
         expires = datetime.now(timezone.utc) + expires_delts
 
@@ -76,19 +77,25 @@ class AuthService:
     ) -> str:
         token = secrets.token_urlsafe(32)
         token_hash = self._hash_token(token)
-        expired_at = datetime.now(timezone.utc) + timedelta(
+        expires_at = datetime.now(timezone.utc) + timedelta(
             days=settings.REFRESH_TOKEN_EXPIRE_DAYS
         )
         await self.refresh_token_repository.save_token(
-            user_id, token_hash, expired_at, ip_address, user_agent
+            user_id, token_hash, expires_at, ip_address, user_agent
         )
         return token
 
     async def get_current_user(self, token: str = Depends(oauth2_scheme)) -> User:
-        if await redis_client.exists(f"bl:{token}"):
+        try:
+            if await redis_client.exists(f"bl:{token}") > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked",
+                )
+        except ConnectionError:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token has been revoked",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Redis connection error",
             )
 
         payload = self.decode_and_validate_access_token(token)

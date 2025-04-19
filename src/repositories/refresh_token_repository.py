@@ -34,14 +34,14 @@ class RefreshTokenRepository(BaseRepository):
         self,
         user_id: int,
         token_hash: str,
-        expired_at: datetime,
+        expires_at: datetime,
         ip_address: str,
         user_agent: str,
     ) -> RefreshToken:
         refresh_token = RefreshToken(
             user_id=user_id,
             token_hash=token_hash,
-            expired_at=expired_at,
+            expires_at=expires_at,
             ip_address=ip_address,
             user_agent=user_agent,
         )
